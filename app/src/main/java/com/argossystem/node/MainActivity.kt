@@ -1,6 +1,5 @@
 package com.argossystem.node
 
-import android.graphics.Bitmap
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -13,28 +12,52 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.unit.dp
+import com.argossystem.node.ui.camera.CameraPreviewScreen
 import com.argossystem.node.ui.theme.ArgosSystemNodeTheme
 import com.argossystem.node.utils.NetworkUtils
 import com.argossystem.node.utils.QrGenerator
 import org.json.JSONObject
+
+// 1. Definimos las pantallas posibles
+sealed class NodeScreen {
+    object Config : NodeScreen()
+    object Preview : NodeScreen()
+}
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContent {
             ArgosSystemNodeTheme {
-                NodeConfigScreen()
+                // 2. Estado para controlar qué pantalla mostrar
+                var currentScreen by remember { mutableStateOf<NodeScreen>(NodeScreen.Config) }
+
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    when (currentScreen) {
+                        is NodeScreen.Config -> {
+                            NodeConfigScreen(
+                                onStartCentinel = { currentScreen = NodeScreen.Preview }
+                            )
+                        }
+                        is NodeScreen.Preview -> {
+                            // Esta es la pantalla que creamos en el archivo CameraPreview.kt
+                            CameraPreviewScreen()
+                        }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-fun NodeConfigScreen() {
-    val deviceName = Build.MODEL // Ejemplo: "SM-G973F" (S10)
+fun NodeConfigScreen(onStartCentinel: () -> Unit) {
+    val deviceName = Build.MODEL
     val ipAddress = remember { NetworkUtils.getTailscaleIp() }
 
-    // Creamos el JSON que el Hub espera recibir
     val qrData = remember {
         JSONObject().apply {
             put("deviceName", "ArgosNode - $deviceName")
@@ -42,52 +65,42 @@ fun NodeConfigScreen() {
         }.toString()
     }
 
-    // Generamos el Bitmap del QR
     val qrBitmap = remember { QrGenerator.generateQrCode(qrData) }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
+    Column(
+        modifier = Modifier.padding(24.dp).fillMaxSize(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Column(
-            modifier = Modifier.padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
-            Text(
-                text = "Configuración del Nodo 🎥",
-                style = MaterialTheme.typography.headlineMedium
-            )
-            Text(
-                text = "Escanea este código desde el Hub",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.secondary
-            )
+        Text("Configuración del Nodo 🎥", style = MaterialTheme.typography.headlineMedium)
+        Text("Escanea este código desde el Hub", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.secondary)
 
-            Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-            // Mostramos el QR si se generó correctamente
-            qrBitmap?.let { bitmap ->
-                Card(
-                    elevation = CardDefaults.cardElevation(8.dp)
-                ) {
-                    Image(
-                        bitmap = bitmap.asImageBitmap(),
-                        contentDescription = "QR Code de Configuración",
-                        modifier = Modifier.size(280.dp).padding(16.dp)
-                    )
-                }
+        qrBitmap?.let { bitmap ->
+            Card(elevation = CardDefaults.cardElevation(8.dp)) {
+                Image(
+                    bitmap = bitmap.asImageBitmap(),
+                    contentDescription = "QR Code",
+                    modifier = Modifier.size(280.dp).padding(16.dp)
+                )
             }
+        }
 
-            Spacer(modifier = Modifier.height(32.dp))
+        Spacer(modifier = Modifier.height(32.dp))
 
-            // Info de red para debug
-            Text(text = "Nombre: $deviceName", style = MaterialTheme.typography.labelLarge)
-            Text(
-                text = "IP Tailscale: $ipAddress",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.primary
-            )
+        Text(text = "Modelo: $deviceName", style = MaterialTheme.typography.labelLarge)
+        Text(text = "IP Tailscale: $ipAddress", style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.primary)
+
+        Spacer(modifier = Modifier.height(48.dp))
+
+        // ⚡ BOTÓN FINAL: Activa la cámara
+        Button(
+            onClick = onStartCentinel,
+            modifier = Modifier.fillMaxWidth(0.8f).height(56.dp),
+            shape = MaterialTheme.shapes.large
+        ) {
+            Text("Iniciar Centinela 🛡️")
         }
     }
 }
