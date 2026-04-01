@@ -45,9 +45,17 @@ fun CameraPreviewScreen() {
     }
 
     DisposableEffect(Unit) {
+        // Preparamos el Intent para arrancar el servicio
+        val serviceIntent = android.content.Intent(context, com.argossystem.node.utils.CentinelService::class.java)
+
+        // Arrancamos el servicio y el servidor de video
+        androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
         com.argossystem.node.utils.VideoServer.start()
+
         onDispose {
+            // Apagamos todo si el usuario sale de la pantalla
             com.argossystem.node.utils.VideoServer.stop()
+            context.stopService(serviceIntent)
         }
     }
 
