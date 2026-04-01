@@ -44,6 +44,13 @@ fun CameraPreviewScreen() {
         }
     }
 
+    DisposableEffect(Unit) {
+        com.argossystem.node.utils.VideoServer.start()
+        onDispose {
+            com.argossystem.node.utils.VideoServer.stop()
+        }
+    }
+
     if (hasCameraPermission) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -65,20 +72,37 @@ private fun startCamera(
     lifecycleOwner: androidx.lifecycle.LifecycleOwner,
     previewView: PreviewView
 ) {
-    val cameraProviderFuture = ProcessCameraProvider.getInstance(context)
+    val cameraProviderFuture = androidx.camera.lifecycle.ProcessCameraProvider.getInstance(context)
 
     cameraProviderFuture.addListener({
         val cameraProvider = cameraProviderFuture.get()
-        val preview = Preview.Builder().build().also {
+
+        val preview = androidx.camera.core.Preview.Builder().build().also {
             it.setSurfaceProvider(previewView.surfaceProvider)
         }
-        val cameraSelector = CameraSelector.DEFAULT_BACK_CAMERA
+
+        // ⚡ NUEVO: Extraemos los fotogramas en tiempo real
+        val imageAnalysis = androidx.camera.core.ImageAnalysis.Builder()
+            .setBackpressureStrategy(androidx.camera.core.ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .build()
+
+        val executor = java.util.concurrent.Executors.newSingleThreadExecutor()
+        imageAnalysis.setAnalyzer(executor) { imageProxy ->
+            // Convertimos la imagen y se la pasamos al servidor
+            val jpegBytes = com.argossystem.node.utils.VideoServer.imageProxyToJpeg(imageProxy)
+            com.argossystem.node.utils.VideoServer.latestFrame.value = jpegBytes
+
+            imageProxy.close() // IMPORTANTÍSIMO: Liberar el frame para recibir el siguiente
+        }
+
+        val cameraSelector = androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
 
         try {
             cameraProvider.unbindAll()
-            cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview)
+            // ⚡ Fíjate que ahora le pasamos 'imageAnalysis' al final
+            cameraProvider.bindToLifecycle(lifecycleOwner, cameraSelector, preview, imageAnalysis)
         } catch (exc: Exception) {
-            Log.e("CameraX", "Error al iniciar la cámara", exc)
+            android.util.Log.e("CameraX", "Error al iniciar la cámara", exc)
         }
-    }, ContextCompat.getMainExecutor(context))
+    }, androidx.core.content.ContextCompat.getMainExecutor(context))
 }
