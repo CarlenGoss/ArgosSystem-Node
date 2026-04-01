@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.argossystem.node.ui.camera.CameraPreviewScreen
 import com.argossystem.node.ui.theme.ArgosSystemNodeTheme
@@ -55,15 +56,34 @@ class MainActivity : ComponentActivity() {
 
 @Composable
 fun NodeConfigScreen(onStartCentinel: () -> Unit) {
+    val context = LocalContext.current
+
+    // ⚡ BLINDAJE DE BATERÍA
+    LaunchedEffect(Unit) {
+        val powerManager = context.getSystemService(android.content.Context.POWER_SERVICE) as android.os.PowerManager
+        if (!powerManager.isIgnoringBatteryOptimizations(context.packageName)) {
+            val intent = android.content.Intent(android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+            }
+            context.startActivity(intent)
+        }
+    }
     val deviceName = Build.MODEL
     val ipAddress = remember { NetworkUtils.getTailscaleIp() }
 
+    // ⚡ NUEVO: Generamos un token de 8 caracteres
+    val securityToken = remember { java.util.UUID.randomUUID().toString().substring(0, 8) }
+
     val qrData = remember {
-        JSONObject().apply {
+        org.json.JSONObject().apply {
             put("deviceName", "ArgosNode - $deviceName")
             put("ip", ipAddress)
+            put("token", securityToken) // Lo metemos al QR
         }.toString()
     }
+
+    // ⚡ NUEVO: Le pasamos el token al servidor antes de iniciar
+    com.argossystem.node.utils.VideoServer.streamToken = securityToken
 
     val qrBitmap = remember { QrGenerator.generateQrCode(qrData) }
 

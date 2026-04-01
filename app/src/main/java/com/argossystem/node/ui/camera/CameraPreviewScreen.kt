@@ -21,53 +21,92 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Button
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.dp
 
 @Composable
 fun CameraPreviewScreen() {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val activity = context as? android.app.Activity
 
+    var isGhostMode by remember { mutableStateOf(false) }
+
+    LaunchedEffect(isGhostMode) {
+        val window = activity?.window
+        if (isGhostMode) {
+            window?.attributes = window?.attributes?.apply { screenBrightness = 0f }
+        } else {
+            window?.attributes = window?.attributes?.apply { screenBrightness = android.view.WindowManager.LayoutParams.BRIGHTNESS_OVERRIDE_NONE }
+        }
+    }
+
+    // --- ESTAS ERAN LAS VARIABLES QUE SE HABÍAN BORRADO ---
     var hasCameraPermission by remember {
         mutableStateOf(
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            androidx.core.content.ContextCompat.checkSelfPermission(context, android.Manifest.permission.CAMERA) == android.content.pm.PackageManager.PERMISSION_GRANTED
         )
     }
 
-    val permissionLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission(),
+    val permissionLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+        contract = androidx.activity.result.contract.ActivityResultContracts.RequestPermission(),
         onResult = { granted -> hasCameraPermission = granted }
     )
 
     LaunchedEffect(Unit) {
         if (!hasCameraPermission) {
-            permissionLauncher.launch(Manifest.permission.CAMERA)
+            permissionLauncher.launch(android.Manifest.permission.CAMERA)
         }
     }
 
     DisposableEffect(Unit) {
-        // Preparamos el Intent para arrancar el servicio
         val serviceIntent = android.content.Intent(context, com.argossystem.node.utils.CentinelService::class.java)
-
-        // Arrancamos el servicio y el servidor de video
         androidx.core.content.ContextCompat.startForegroundService(context, serviceIntent)
         com.argossystem.node.utils.VideoServer.start()
 
         onDispose {
-            // Apagamos todo si el usuario sale de la pantalla
             com.argossystem.node.utils.VideoServer.stop()
             context.stopService(serviceIntent)
         }
     }
+    // --------------------------------------------------------
 
     if (hasCameraPermission) {
-        AndroidView(
-            modifier = Modifier.fillMaxSize(),
-            factory = { ctx ->
-                val previewView = PreviewView(ctx)
-                startCamera(ctx, lifecycleOwner, previewView)
-                previewView
+        Box(modifier = Modifier.fillMaxSize()) {
+            AndroidView(
+                modifier = Modifier.fillMaxSize(),
+                factory = { ctx ->
+                    val previewView = androidx.camera.view.PreviewView(ctx)
+                    startCamera(ctx, lifecycleOwner, previewView)
+                    previewView
+                }
+            )
+
+            if (isGhostMode) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black)
+                        .pointerInput(Unit) {
+                            detectTapGestures(onDoubleTap = { isGhostMode = false })
+                        }
+                )
+            } else {
+                Button(
+                    onClick = { isGhostMode = true },
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(32.dp),
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.DarkGray)
+                ) {
+                    Text("👻 Activar Modo Fantasma")
+                }
             }
-        )
+        }
     } else {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             Text("Esperando permiso de cámara...", color = Color.Gray)
